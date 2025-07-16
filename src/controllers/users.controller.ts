@@ -67,33 +67,6 @@ export const createUser = async (req: Request, res: Response) => {
     //almacenar el token al crear usuario
     cache.set(userId, accessToken, 60 * 15);
 
-/*     // Conexión AMQP para publicar el email
-    try {
-      const connection = await amqp.connect(process.env.CLOUDAMQP_URL!);
-      const channel = await connection.createChannel();
-      await channel.assertQueue("emailQueue", { durable: true });
-      
-      const welcomeEmail = {
-        to: savedUser.email,
-        subject: "Bienvenid@s a SUUDAI ACUAPONIA",
-        html: `<h1>Bienvenido ${savedUser.firstName}</h1>
-               <p>Gracias por registrarte en nuestra plataforma</p>`
-      };
-      
-      channel.sendToQueue(
-        "emailQueue",
-        Buffer.from(JSON.stringify(welcomeEmail)),
-        { persistent: true }
-      );
-      
-      setTimeout(() => {
-        connection.close();
-      }, 500);
-    } catch (amqpError) {
-      console.error("Error al enviar email a la cola:", amqpError);
-      // No fallar la creación de usuario solo por el email
-    }
- */
     return res.status(201).json({ 
       message: "Usuario creado correctamente", 
       user: savedUser, 
@@ -133,34 +106,110 @@ export const getUserByEmail = async (req: Request, res: Response) => {
     }
 };
 
-export const updateDataUser = async (req: Request, res: Response) => {
+export const getUserById = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const userPK = await User.findOne({ _id: userId }); // Mi función para buscar por userId
+
+        if (!userPK) {
+            return res.status(404).json({ message: "Usuario no encontrado", userPK });
+        }
+
+        return res.status(200).json({ userPK });// Si se encuentra, devolverlo
+
+    } catch (error) {
+        return res.status(500).json({ message: "Error al buscar usuario", error });
+    }
+};
+
+export const updateDataUserByAdmin = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const { currentPassword, email, newPassword, phoneNumber, status, role } = req.body;
+    const { status, role } = req.body;
+    const loggedUser = (req as any).user;
+
+    // Validación de autenticación
+    if (!loggedUser) {
+      return res.status(401).json({ message: "No autenticado. Debes iniciar sesión para realizar esta operación." });
+    }
+
+    const isAdmin = loggedUser.role === 'Adm1ni$trad0r';
+    if (!isAdmin) {
+      return res.status(403).json({ message: "Acceso denegado. Solo administradores pueden modificar estos datos." });
+    }
+
+    // Buscar al usuario por ID
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado. Verifica el ID proporcionado." });
+    }
+
+    // Actualizar status si viene en body
+    if (typeof status !== 'undefined') {
+      if (typeof status !== 'boolean') {
+        return res.status(400).json({ message: "El valor de 'status' debe ser booleano (true o false)." });
+      }
+      user.status = status;
+    }
+
+    // Actualizar role si viene en body
+    if (role) {
+      const validRoles = ['Adm1ni$trad0r', 'M4ntenim1ent0', 'B0t4nic0', 'Default'];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({
+          message: "Rol inválido. Los roles permitidos son: 'Adm1ni$trad0r', 'M4ntenim1ent0', 'B0t4nic0' y 'Default'."
+        });
+      }
+      user.role = role;
+    }
+
+    const updatedUser = await user.save();
+
+    return res.status(200).json({
+      message: "Usuario actualizado correctamente.",
+      updatedUser
+    });
+
+  } catch (error) {
+    console.error("Error al actualizar datos de usuario:", error);
+
+    return res.status(500).json({
+      message: "Ocurrió un error inesperado al actualizar usuario.",
+      error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+};
+
+export const updateDataUserByUser = async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, email, newPassword, phoneNumber } = req.body;
     const loggedUser = (req as any).user;
 
     if (!loggedUser) {
       return res.status(401).json({ message: "No autenticado" });
     }
 
+    const userId = loggedUser.id;
     const isAdmin = loggedUser.role === 'Adm1ni$trad0r';
 
+    // Buscar al usuario en base al token
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
 
-    // Si no es admin, debe validar su contraseña para cambiar sus propios datos
+    // Si no es admin, debe validar su contraseña actual
     if (!isAdmin) {
-      if (!currentPassword) return res.status(400).json({ message: "Debes proporcionar la contraseña actual" });
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Debes proporcionar la contraseña actual." });
+      }
       const isMatch = await bcrypt.compare(currentPassword, user.password);
-      if (!isMatch) return res.status(401).json({ message: "Contraseña actual incorrecta" });
-
-      // Evitar que usuarios no admin intenten cambiar status o role
-      if (status !== undefined || role !== undefined) {
-        return res.status(403).json({ message: "Acceso denegado: No tienes permiso para realizar esta acción" });
+      if (!isMatch) {
+        return res.status(401).json({ message: "Contraseña actual incorrecta." });
       }
     }
 
-    // Validación de email
+    // Validación y actualización de email
     if (email && email !== user.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -173,49 +222,40 @@ export const updateDataUser = async (req: Request, res: Response) => {
       user.email = email;
     }
 
-    // Validación de teléfono
+    // Validación y actualización de teléfono
     if (phoneNumber && phoneNumber !== user.phoneNumber) {
       const phoneRegex = /^\d{10}$/;
       if (!phoneRegex.test(phoneNumber)) {
-        return res.status(400).json({ message: "El número telefónico debe tener exactamente 10 dígitos numéricos." });
+        return res.status(400).json({ message: "El número telefónico debe tener exactamente 10 dígitos." });
       }
       const phoneExists = await User.findOne({ phoneNumber });
       if (phoneExists && phoneExists.id.toString() !== userId) {
-        return res.status(409).json({ message: "El teléfono ya está registrado." });
+        return res.status(409).json({ message: "El número ya está registrado." });
       }
       user.phoneNumber = phoneNumber;
     }
 
-    // Validación de nueva contraseña
+    // Validación y actualización de contraseña
     if (newPassword) {
-      if (typeof newPassword === 'string' && newPassword.length < 8) {
+      if (typeof newPassword !== 'string' || newPassword.length < 8) {
         return res.status(400).json({ message: "La nueva contraseña debe tener al menos 8 caracteres." });
       }
-      
-      const salt = await bcrypt.genSalt(10);
+      const salt = await bcrypt.genSalt(12);
       const hashedPassword = await bcrypt.hash(newPassword, salt);
       user.password = hashedPassword;
     }
 
-    // Solo admin puede modificar status y role
-    if (isAdmin) {
-      if (typeof status === 'boolean') user.status = status;
-
-      const validRoles = ['Adm1ni$trad0r', 'M4ntenim1ent0', 'B0t4nic0', 'Default'];
-      if (role) {
-        if (!validRoles.includes(role)) {
-          return res.status(400).json({ message: "El rol especificado no es válido." });
-        }
-        user.role = role;
-      }
-    }
-
+    // Guardar cambios
     const updatedUser = await user.save();
-      return res.status(200).json({ message: "Usuario actualizado correctamente.", updatedUser });
+
+    return res.status(200).json({
+      message: "Datos actualizados correctamente.",
+      user: updatedUser
+    });
 
   } catch (error) {
-    console.error(error);
-      return res.status(500).json({ message: "Error al actualizar usuario" });
+    console.error("Error al actualizar usuario:", error);
+    return res.status(500).json({ message: "Error interno al actualizar usuario." });
   }
 };
 

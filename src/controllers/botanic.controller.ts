@@ -47,11 +47,12 @@ export const updateInventoryByName = async (req: Request, res: Response) => {
   try {
     const { name } = req.params;
 
-    // Verificar que no se duplique el 'name' si lo actualizan
+    // Solo validar duplicados si se envía 'name' en el body
     if (req.body.name) {
       const existing = await BotanicInventory.findOne({
         name: req.body.name,
-        plantName: { $ne: name } // Solo revisa duplicados en otros documentos
+        // Aquí comparamos con el documento actual, para evitar conflictos con otros
+        _id: { $ne: (await BotanicInventory.findOne({ name }))?._id }
       });
 
       if (existing) {
@@ -59,6 +60,7 @@ export const updateInventoryByName = async (req: Request, res: Response) => {
       }
     }
 
+    // Actualización parcial, solo actualiza los campos enviados
     const updatedInventory = await BotanicInventory.findOneAndUpdate(
       { name },
       req.body,
@@ -66,13 +68,14 @@ export const updateInventoryByName = async (req: Request, res: Response) => {
     );
 
     if (!updatedInventory) {
-      return res.status(404).json({ message: 'Planta no encontrada.' });
+      return res.status(404).json({ message: 'Inventario no encontrado.' });
     }
 
-    res.json({ message: 'Planta actualizada.', updatedInventory });
+    res.json({ message: 'Inventario actualizado correctamente.', updatedInventory });
 
   } catch (error) {
-    res.status(500).json({ message: 'Error al actualizar planta.' });
+    console.error('Error al actualizar:', error);
+    res.status(500).json({ message: 'Error interno al actualizar inventario.' });
   }
 };
 

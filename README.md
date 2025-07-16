@@ -18,5 +18,4 @@ las credenciales de acceso se especifican en el archivo
 email - password 
 
 Variables de entorno en el archivo .env-backend
-al nivel del package
-renombrar a .env a la hora de utilizar
+renombrar a la hora de utilizar

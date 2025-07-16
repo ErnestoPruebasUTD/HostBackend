@@ -49,6 +49,10 @@ export const loginMethod = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Credenciales incorrectas" });
     }
 
+    if (user.status === false) {
+      return res.status(403).json({ message: "Usuario inactivo" });
+    } 
+
     const userId = user._id.toString();
     const accessToken = generateAccessToken(userId, user.role);
 

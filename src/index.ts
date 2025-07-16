@@ -14,9 +14,10 @@ import 'dotenv/config';
 import cors from 'cors';
 
 const app = express();
-app.disable('x-powered-by'); 
+app.disable('x-powered-by'); // Desactiva el header para no exponer la tecnologpia usada en el back
 const PORT = process.env.PORT_SERVER as string;
 
+// Configurar CORS para múltiples orígenes
 const allowedOrigins = [process.env.URL_FRONT, process.env.URL_MOBILE];
 
 
