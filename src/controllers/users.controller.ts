@@ -182,9 +182,17 @@ export const updateDataUserByAdmin = async (req: Request, res: Response) => {
 
 export const updateDataUserByUser = async (req: Request, res: Response) => {
   try {
-    const { currentPassword, email, newPassword, phoneNumber } = req.body;
-    const loggedUser = (req as any).user;
+    const {
+      currentPassword,
+      email,
+      newPassword,
+      phoneNumber,
+      firstName,
+      middleName,
+      lastName
+    } = req.body;
 
+    const loggedUser = (req as any).user;
     if (!loggedUser) {
       return res.status(401).json({ message: "No autenticado" });
     }
@@ -192,16 +200,15 @@ export const updateDataUserByUser = async (req: Request, res: Response) => {
     const userId = loggedUser.id;
     const isAdmin = loggedUser.role === 'Adm1ni$trad0r';
 
-    // Buscar al usuario en base al token
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "Usuario no encontrado." });
     }
 
-    // Si no es admin, debe validar su contraseña actual
-    if (!isAdmin) {
+    // Validar currentPassword solo si quiere cambiar contraseña y no es admin
+    if (newPassword && !isAdmin) {
       if (!currentPassword) {
-        return res.status(400).json({ message: "Debes proporcionar la contraseña actual." });
+        return res.status(400).json({ message: "Debes proporcionar tu contraseña actual para cambiar la contraseña." });
       }
       const isMatch = await bcrypt.compare(currentPassword, user.password);
       if (!isMatch) {
@@ -209,7 +216,7 @@ export const updateDataUserByUser = async (req: Request, res: Response) => {
       }
     }
 
-    // Validación y actualización de email
+    // Email
     if (email && email !== user.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -222,20 +229,24 @@ export const updateDataUserByUser = async (req: Request, res: Response) => {
       user.email = email;
     }
 
-    // Validación y actualización de teléfono
-    if (phoneNumber && phoneNumber !== user.phoneNumber) {
-      const phoneRegex = /^\d{10}$/;
-      if (!phoneRegex.test(phoneNumber)) {
-        return res.status(400).json({ message: "El número telefónico debe tener exactamente 10 dígitos." });
-      }
-      const phoneExists = await User.findOne({ phoneNumber });
-      if (phoneExists && phoneExists.id.toString() !== userId) {
-        return res.status(409).json({ message: "El número ya está registrado." });
-      }
-      user.phoneNumber = phoneNumber;
+    // Teléfono
+    if (phoneNumber === undefined || phoneNumber === null) {
+      return res.status(400).json({ message: "El número telefónico es obligatorio." });
     }
 
-    // Validación y actualización de contraseña
+    if (typeof phoneNumber !== 'string' && typeof phoneNumber !== 'number') {
+      return res.status(400).json({ message: "El número telefónico debe ser texto o número." });
+    }
+
+    const phoneStr = String(phoneNumber).trim();
+
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phoneStr)) {
+      return res.status(400).json({ message: "El número telefónico debe tener exactamente 10 dígitos numéricos." });
+    }
+
+
+    // Contraseña
     if (newPassword) {
       if (typeof newPassword !== 'string' || newPassword.length < 8) {
         return res.status(400).json({ message: "La nueva contraseña debe tener al menos 8 caracteres." });
@@ -245,7 +256,19 @@ export const updateDataUserByUser = async (req: Request, res: Response) => {
       user.password = hashedPassword;
     }
 
-    // Guardar cambios
+    // Nombres
+    if (firstName !== undefined && firstName !== user.firstName) {
+      user.firstName = firstName;
+    }
+
+    if (middleName !== undefined && middleName !== user.middleName) {
+      user.middleName = middleName;
+    }
+
+    if (lastName !== undefined && lastName !== user.lastName) {
+      user.lastName = lastName;
+    }
+
     const updatedUser = await user.save();
 
     return res.status(200).json({
@@ -258,6 +281,8 @@ export const updateDataUserByUser = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Error interno al actualizar usuario." });
   }
 };
+
+
 
 export const deleteUser = async (req:Request, res:Response) => {
   try {
@@ -277,32 +302,35 @@ export const deleteUser = async (req:Request, res:Response) => {
   }
 };
 
-// backEnd/src/controllers/authController.ts
 export const requestPasswordReset = async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
+    // Buscar al usuario por su correo
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: "Usuario no encontrado." });
     }
 
+    // Generar el token JWT
     const token = jwt.sign(
-      { userId: user._id }, 
-      process.env.JWT_SECRET as string, 
+      { userId: user._id },
+      process.env.JWT_SECRET as string,
       { expiresIn: '30m' }
     );
+
+    const encodedToken = encodeURIComponent(token);
+
+    const resetLink = `${process.env.RESET_PASSWORD_URL}?token=${encodedToken}`;
 
     await publishEmail({
       type: 'resetPassword',
       data: {
         to: user.email,
-        name: user.firstName, // o firstName según necesites
-        token
+        name: user.firstName,
+        token: resetLink 
       }
     });
-
-    console.log(token)
 
     res.status(200).json({ message: "Correo enviado para restablecer contraseña." });
   } catch (error) {
