@@ -4,7 +4,7 @@ import 'dotenv/config';
 
 const ACCESS_SECRET = process.env.JWT_SECRET as string;
 
-const timeToLive = 60 * 15; 
+const timeToLive = 60 * 15 * 15; 
 
 export const generateAccessToken = (userId: string, role: string) => {
     return jwt.sign(
