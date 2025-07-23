@@ -3,28 +3,24 @@ import fs from 'fs';
 import path from 'path';
 import type { ISensorData } from '../models/Sensor';
 
-/**
- * Carga el logo y lo convierte a Base64
- */
+// Carga el logo y lo convierte a Base64
 const loadLogoBase64 = (): string => {
   const imagePath = path.resolve(__dirname, '../assets', 'logo.png');
   try {
     const imageBuffer = fs.readFileSync(imagePath);
     return imageBuffer.toString('base64');
   } catch (error) {
-    console.error('Error leyendo la imagen del logo:', error);
+    console.error('❌ Error leyendo la imagen del logo:', error);
     return '';
   }
 };
 
 const logoBase64 = loadLogoBase64();
 
-/**
- * Genera el HTML a partir de los datos de sensores
- */
+// Construye el HTML para el reporte
 const buildHTML = (data: ISensorData[]): string => {
   const rows = data.map((entry, idx) => {
-    const sensor = entry.sensors[0]; // solo la primera lectura del array
+    const sensor = entry.sensors[0];
     return `
       <tr>
         <td>${idx + 1}</td>
@@ -106,25 +102,22 @@ const buildHTML = (data: ISensorData[]): string => {
   `;
 };
 
-/**
- * Genera un PDF con los datos de sensores y lo guarda en el outputPath
- */
+// Función principal para generar el PDF
 export const generateSensorPDF = async (
   sensorData: ISensorData[],
   outputPath: string
 ): Promise<void> => {
   const html = buildHTML(sensorData);
 
-  // 🛡️ Railway-friendly config
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
 
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0' });
 
-  const tempDir = path.join(__dirname, '../../temp');
+  const tempDir = path.dirname(outputPath);
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
