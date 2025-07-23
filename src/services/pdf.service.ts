@@ -3,31 +3,36 @@ import fs from 'fs';
 import path from 'path';
 import type { ISensorData } from '../models/Sensor';
 
+/**
+ * Carga el logo y lo convierte a Base64
+ */
 const loadLogoBase64 = (): string => {
-  const imagePath = path.resolve(__dirname, '../assets', 'logo.png'); 
+  const imagePath = path.resolve(__dirname, '../assets', 'logo.png');
   try {
     const imageBuffer = fs.readFileSync(imagePath);
-    const base64String = imageBuffer.toString('base64');
-    return base64String;
+    return imageBuffer.toString('base64');
   } catch (error) {
     console.error('Error leyendo la imagen del logo:', error);
-    return ''; 
+    return '';
   }
 };
 
 const logoBase64 = loadLogoBase64();
 
+/**
+ * Genera el HTML a partir de los datos de sensores
+ */
 const buildHTML = (data: ISensorData[]): string => {
   const rows = data.map((entry, idx) => {
-    const sensor = entry.sensors[0]; // Solo la primera lectura
+    const sensor = entry.sensors[0]; // solo la primera lectura del array
     return `
       <tr>
         <td>${idx + 1}</td>
         <td>${new Date(entry.createDate).toLocaleString()}</td>
-        <td>${sensor.ph.toFixed(2)}</td>
-        <td>${sensor.conductivity.toFixed(2)}</td>
-        <td>${sensor.temperature.toFixed(2)}</td>
-        <td>${sensor.level.toFixed(2)}</td>
+        <td>${sensor?.ph?.toFixed(2) ?? '-'}</td>
+        <td>${sensor?.conductivity?.toFixed(2) ?? '-'}</td>
+        <td>${sensor?.temperature?.toFixed(2) ?? '-'}</td>
+        <td>${sensor?.level?.toFixed(2) ?? '-'}</td>
       </tr>
     `;
   }).join('');
@@ -101,26 +106,39 @@ const buildHTML = (data: ISensorData[]): string => {
   `;
 };
 
+/**
+ * Genera un PDF con los datos de sensores y lo guarda en el outputPath
+ */
 export const generateSensorPDF = async (
   sensorData: ISensorData[],
   outputPath: string
 ): Promise<void> => {
   const html = buildHTML(sensorData);
 
-  const browser = await puppeteer.launch();
+  // 🛡️ Railway-friendly config
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0' });
 
   const tempDir = path.join(__dirname, '../../temp');
   if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir);
+    fs.mkdirSync(tempDir, { recursive: true });
   }
 
   await page.pdf({
     path: outputPath,
     format: 'A4',
     printBackground: true,
-    margin: { top: '40px', bottom: '40px', left: '30px', right: '30px' },
+    margin: {
+      top: '40px',
+      bottom: '40px',
+      left: '30px',
+      right: '30px',
+    },
   });
 
   await browser.close();
